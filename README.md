@@ -11,3 +11,7 @@ Proposal: The IOC could play a more proactive part, seeking athletes that fill a
 (1) Increase participation in certain “niche” sports that currently have comparatively less participation. 
 (2) Equalize male &amp; female participation in certain sports. 
 (3) Provide more scholarships to emerging countries that show promise to earn more medals.
+
+Why? Taking a more active role builds on the philanthropy of the IOC, and, allows the IOC to achieve multiple objectives at the same time.
+
+Approach: We’ll use statistical, visual analysis, and data science techniques to bring this data to life. We will connect data about athletes with information about their home country and employ the muscle of R to find meaningful correlations and insights.  
