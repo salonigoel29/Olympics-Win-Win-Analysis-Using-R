@@ -1,0 +1,884 @@
+---
+title: "<center><h1><b> Using Analytics for an Olympic Win-Win </h1></b></center>"
+author: "<center>Delores Mincarelli, Saloni Goel, Naveen Reddy</center>"
+date: "<center>December 4, 2021</center>"
+output: 
+  html_document: 
+    highlight: monochrome
+    theme: lumen
+---
+<center>![](image.png)</center>
+
+<center>[RPubs Link](https://rpubs.com/DeloresMincarelli/RioOlympics)</center>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r , include=FALSE, echo = FALSE, message = FALSE}
+
+# setwd("C:/Users/Goels/Desktop/UC/Data Wrangling/midterm")
+# getwd()
+
+```
+
+## {.tabset .tabset-fade .tabset-pills}
+### 1. Introduction
+
+<font size="3">**It takes a lot of money to prepare and send athletes to the Olympics.**  Consider: their training, coaching, and access to facilities. Who bears this financial burden?  It varies; some countries pay for everything, but in other countries a significant portion is paid by the athlete and their family.  \
+
+Thus, the International Olympic Committee has a [scholarship program](https://stillmed.olympics.com/media/Document%20Library/OlympicOrg/IOC/Who-We-Are/Commissions/Olympic-Solidarity/Olympic-Scholarships-for-Athletes-Results-Rio-2016.pdf?_ga=2.214502034.464514119.1638446536-1164305563.1635902413), whose objective is to provide financial assistance to athletes from less privileged countries the chance to prepare for and qualify for the Olympic Games.  \
+
+**How are these athletes chosen?**    Currently, the athlete's home country identifies candidates and the athletes apply for the scholarship.  The final decision lies with the "Olympic Solidarity"  committee. 
+
+**Proposal: **  The IOC could play a more proactive part, *seeking* athletes that fill a particular need or goal, for a "win-win".   These strategic goals could target specific sports or countries where the IOC wants to put emphasis.  \
+
+For example: (1)  Increase participation in certain "niche" sports that currently have comparatively less participation.  (2) Equalize male & female participation in certain sports. (3) Provide more scholarships to emerging countries that show promise to earn more medals. \
+
+
+**Why?**  Taking a more active role builds on the philanthropy of the IOC, and, allows the IOC to achieve multiple objectives at the same time.  
+
+**Approach** We'll use statistical, visual analysis, and data science techniques to bring this data to life.  We will connect data about athletes with information about their home country and employ the muscle of R to find meaningful correlations and insights. </font>\  
+
+
+### 2. Packages Used
+
+```{r , message = FALSE, warning = FALSE}
+
+
+
+########################################################
+# Load Required Packages ##
+########################################################
+
+library(dplyr) ## Manipulating data
+library(tidyverse) ## Tidying data
+library(ggplot2) ## Visualizing data
+library(readxl)  ## import Excel files
+library(kableExtra) ## Data Formatting
+library(lubridate) ## Manipulating dates
+library(gridExtra) ## Allows viewing of visualizations in grid format
+library(corrplot) ## Correlations between variables
+
+########################################################
+# The packages below are used to support clustering 
+# and visualization of clusters
+#######################################################
+library(FactoMineR) ## used for multivariate Exploratory Data Analysis
+library(factoextra)  ## factoextra is an R package making easy to extract and visualize the output of exploratory multivariate data analyses
+library(cluster)   ## divides a dataset into groups (clusters) of observations that are similar to each other
+library(fpc)      # estimates the number of clusters with kmeans
+library(NbClust)   # NbClust package provides 30 indices for determining the number of clusters and proposes to user the best clustering scheme from the different results
+library(devtools) # provides R functions that simplify many common tasks 
+library(car)   # Companion to Applied Regression --To check the validity of numerous regression techniques
+
+
+```
+
+
+### 3. Data Preparation
+
+<font size="3">**3.1 Source of data**</font>\
+<font size="3"> This dataset comes from [Kaggle - Rio Olympics](https://www.kaggle.com/rio2016/olympic-games), (note, link may not open using Windows Explorer), which also cites the [ Official Olympics Website](https://olympics.com/en/athletes/) as the original source. The dataset was created in Dec 2016 and consists of the official statistics for all of the athletes and events at the 2016 Olympic Games in Rio de Janeiro.</font> \
+<font size="3"> 3 csv files were available, but we only used two of them.  Please see explanation under "Peculiarities".</font>\
+<font size="3">Files:</font>\
+<font size="3">-Athletes.csv</font>\
+<font size="3">-Countries.csv</font>\
+<font size="3">-Events. csv</font>\
+
+
+<font size="3"> **3.2 Variables,  Missing Values, Peculiarities **</font>\
+<font size="3"> **3.2.1 Import Files & Review Variables**</font>\
+<font size="3"> In this step we import files for athletes and countries and merge together on the nationality & country code.  We specified a left join from our athlete file, which will allow us to see how many participants did not get associated with a country.  We have general athlete information like name, birthdate, height, weight and from the country file we get the country name, population, and GDP. </font>\
+
+```{r  , echo = FALSE, warning = FALSE , message = FALSE  }
+
+
+athletes <- read.csv("athletes.csv" , stringsAsFactors=FALSE)
+
+
+countries <- read.csv("countries.csv" , stringsAsFactors=FALSE)
+
+
+rio_orig <- merge(x=athletes, y=countries, by.x="nationality", by.y="code" , all.x = TRUE)
+
+
+
+```
+
+
+
+<font size="3"> **3.2.2  Missing Values and Imputation**  <font size="3">\
+<font size="3"> First, let's look at the number of complete observations.</font>\
+<font size="3"> We have 10,109 complete records out of 11,538 = 87% complete </font>\
+```{r , echo = FALSE, warning = FALSE, message = FALSE}
+
+num_complete <- sum(complete.cases(rio_orig)  ) 
+
+```
+ <font size="3"> **We have 5 columns with missing values** </font>\
+ <font size="3"> **Percent Missing by Column** </font>\
+```{r , echo = FALSE, warning = FALSE , message = FALSE}
+
+percent_missing <- as.data.frame(colSums(is.na(rio_orig))/nrow(rio_orig)*100)
+names(percent_missing) <- c("percent_missing") 
+percent_missing  %>% 
+       filter(percent_missing  > 0 ) %>% 
+       mutate(percent_missing = round(percent_missing, 4) )  %>% 
+       kbl(caption = "Percent Missing") %>%
+       kable_classic(full_width = F, html_font = "Cambria")
+
+
+
+```
+
+ <font size="3">**What should we do about missing values?**</font>\
+<font size="3"> - **Height and Weight** We will impute the missing values. \
+<font size="3">- **Population and GDP** - this is very specific information about a country so it doesn't make sense to impute.  We will leave as NULL.</font>\
+<font size="3"> - **Country**  Our country csv file lacked many countries needed to join to the athlete csv file.  Looking at the athlete's nationality codes, we can look up the country (on internet) and add it to the dataset.  For example, the country code "KOS" represents "Kosovo", so we will manually add that in so we will not have any missing values in this column.  </font>\
+
+```{r , echo = FALSE, warning = FALSE , message = FALSE}
+
+rio_orig %>%
+  filter( is.na(rio_orig$country) ) %>%
+  group_by( country , nationality) %>%    #
+  select( country, nationality ) -> missing_country
+
+rio_orig$country[rio_orig$nationality == "KIR" ] <- "Kiribati"
+rio_orig$country[rio_orig$nationality == "KOS" ] <- "Kosovo"
+rio_orig$country[rio_orig$nationality == "MHL" ] <- "Marshall Islands"
+rio_orig$country[rio_orig$nationality == "MNE" ] <- "Montenegro"
+rio_orig$country[rio_orig$nationality == "ROU" ] <- "Romania"
+rio_orig$country[rio_orig$nationality == "SRB" ] <- "Serbia"
+rio_orig$country[rio_orig$nationality == "SSD" ] <- "South Sudan"
+rio_orig$country[rio_orig$nationality == "TTO" ] <- "Trinidad"
+rio_orig$country[rio_orig$nationality == "TUV" ] <- "Tuvalu"
+rio_orig$country[rio_orig$nationality == "IOA" ] <- "Intl Olympic Assoc."
+rio_orig$country[rio_orig$nationality == "ROT" ] <- "Refugee Olympic Tm"
+
+# check
+# percent_missing <- as.data.frame(colSums(is.na(rio_orig))/nrow(rio_orig)*100)
+# names(percent_missing) <- c("percent_missing")
+# percent_missing  %>%
+#        filter(percent_missing  > 0 )
+
+
+```
+
+
+
+<font size="3"> **3.2.3 Peculiarities**</font> \
+<font size="3"> In our dataset, there was a file named: "events.csv" :  This file included *specific* events, like "100m Women's Backstroke",  however, the key in this file did not link to the athletes *so we did not use it.*</font>
+
+```{r}
+
+
+```
+
+
+<font size="3"> **3.3 Cleaning**</font> \
+<font size="3"> **3.3.1 Rename gdp_per_capita.** </font> \ 
+<font size="3"> We'll rename column "gdp_per_capita" to just "gdp", since the standard definition of gdp includes per capita, and a shorter name will allow our data to fit neatly onto the screen.   
+<font size="3"> We will round the gdp to 0 decimals, since we are not doing anything in our analysis that needs more precision. </font> \
+```{r , echo = FALSE, warning = FALSE , message = FALSE}
+
+colnames(rio_orig)[14] <- "gdp"
+rio_orig$gdp <- round(rio_orig$gdp)
+
+
+```
+
+<font size="3"> **3.3.2 Change "athletics" to "track and field" in the sport variable**</font>   \
+<font size="3"> We felt "athletics" was too general for the event category these athletes participated in.</font>\
+
+```{r ,  echo = FALSE, warning = FALSE , message = FALSE}
+rio_orig$sport[rio_orig$sport  == "athletics"] <- "track and field" 
+
+```
+
+<font size="3">**3.3.3 Do we have incorrect values?**</font>  \
+<font size="3"> Everything looks realistic </font>\
+```{r  echo = FALSE, warning = FALSE , message = FALSE}
+num.cols <- c( 6,7,9,10,11 , 14 )
+height_wt_summary<-sapply(rio_orig[,num.cols][sapply(num.cols,is.numeric)], function(num.cols) 
+   c( 
+                           "Mean"=    round(mean(na.omit(num.cols,na.rm=TRUE)),1),
+                           "Median" = round(median(na.omit(num.cols)),1),
+                          "Minimum" = round(min(na.omit(num.cols)),1),
+                          "Maximun" = round(max(na.omit(num.cols)),1),
+                          "Std Dev" = round(sd(na.omit(num.cols)),1),
+                          "Count"   = length(na.omit(num.cols))
+
+                     )
+ )
+
+ 
+# transpose 
+height_weight_table <- as.data.frame(t(height_wt_summary))
+
+height_weight_table %>% 
+  kbl(caption = "Numerical variables statistics") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+```
+
+
+<font size="3">**3.3.4 Create new variables**</font>  \
+<font size="3"> Add new variables for: total medals, age,  and height & weight using English units for our American audience, and calculate Body Mass Index (BMI) </font>\
+ $$Total Medals = numberGold + numberSilver + numberBronze$$
+ $$age(years) = (8/5/2016 - dob) / 365.25$$
+ $$height(inches) = height * 39.3701$$
+ $$weight(lbs) = weight * 2.20462$$
+ $$BMI = weight (kg) / [height (m)]^{2}$$
+
+```{r, echo = FALSE, warning = FALSE , message = FALSE}
+
+rio_orig["height_eng"] <- round( rio_orig$height * 39.3701 , 1)
+
+rio_orig["weight_eng"] <- round( rio_orig$weight * 2.20462 , 1)
+
+rio_orig["BMI"] <-        round( rio_orig$weight / (rio_orig$height)^2 , 1)
+
+rio_orig["tot_medals"] <-  (rio_orig$gold + rio_orig$silver + rio_orig$bronze)
+
+# AGE
+rio_orig$dob <- mdy(rio_orig$dob)
+rio_date <- mdy("8/5/2016")
+# 
+athlete_age <-  rio_date - rio_orig$dob
+rio_orig["age"] <- athlete_age / 365.25
+rio_orig$age <- as.integer(rio_orig$age)
+
+
+# Naveen's block of code begin
+rio_orig$height_eng[is.na(rio_orig$height_eng)] <- round(mean(rio_orig$height_eng,na.rm = T),digits = 1)
+rio_orig$weight_eng[is.na(rio_orig$weight_eng)] <- round(mean(rio_orig$weight_eng,na.rm = T),digits = 1)
+
+
+rio_orig %>% 
+  group_by(nationality) %>% 
+  summarise(tot_golds = sum(gold),
+            tot_silver = sum(silver), 
+            tot_bronze = sum(bronze),
+            tot_medals = sum(tot_golds,tot_silver,tot_bronze))  -> Country_medalsdf
+
+#view(Country_medalsdf)
+
+# rio_orig %>% 
+#   group_by(nationality,sex) %>% 
+#   summarise(tot_golds = sum(gold),
+#             tot_silver = sum(silver), 
+#             tot_bronze = sum(bronze),
+#             tot_medals = sum(tot_golds,tot_silver,tot_bronze)) -> Sex_medalsdf
+# view(Sex_medalsdf)
+
+# rio_orig %>% 
+#   group_by(id) %>% 
+#   mutate(tot_medals = sum(gold,silver,bronze)) -> rio_orig
+# view(rio_orig)
+
+x <- length(unique(rio_orig$nationality))
+y <- length(unique(rio_orig$id))
+z <- length(unique(rio_orig$tot_medals))
+w <- length(unique(rio_orig$sport)) 
+
+#First overview table with the major stats of the dataset
+
+Header_df <- data.frame('Total_Countries' = x,
+                  'Total_Athletes' = y,
+                  'Total_medals' = z,
+                  'Total_sports' = w
+)
+
+k <- which(Country_medalsdf$tot_medals == '0')
+  tempdf2 <- Country_medalsdf[-c(k),]
+# view(tempdf2)
+  
+#Ranking of the countries by Medals  
+  # ggplot(data = tempdf2,aes(x = reorder(nationality,tot_medals),y = tot_medals)) +
+  # geom_bar(stat = 'identity',aes(fill = tot_medals)) +
+  # coord_flip() +
+  # theme_dark() +
+  # labs(title = 'Rankings of Countries by total medals',
+  #      x = 'Countries',y = 'Medals') +
+  # geom_hline(yintercept = mean(tempdf2$tot_medals),
+  #            size = 1,color = 'black')
+
+
+# Naveen's block of code end
+
+```
+ 
+
+<font size="3"> **3.4 Review Cleaned Data**</font>  \
+
+```{r , echo = FALSE, warning = FALSE , message = FALSE }
+
+number_of_rows <-     dim(rio_orig)[1]
+number_of_columns <-  dim(rio_orig)[2]
+
+dimensions_df <- data.frame(number_of_rows, number_of_columns)
+
+names(dimensions_df) <- c("Rows", "Columns") 
+dimensions_df  %>% 
+       kbl(caption = "Size of dataset") %>%
+       kable_classic(full_width = F, html_font = "Cambria")
+
+
+
+```
+
+<font size="3"> </font>
+```{r , echo = FALSE, warning = FALSE , message = FALSE }
+
+
+  select( rio_orig, -c( id, nationality )) %>%
+  head(n = 5)  %>% 
+  kbl(caption = "First 5 rows excluding columns id and nationality (country code)"  )  %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+```
+
+<font size="3">  </font>
+```{r , echo = FALSE, warning = FALSE , message = FALSE}
+
+  select( rio_orig, -c( id, nationality )) %>%
+  tail(n = 5)  %>% 
+   kbl(caption = "Last 5 rows excluding columns id and nationality (country code)"  )  %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+
+```
+
+<font size="3">**3.5 Review Variables** </font>
+```{r , echo = FALSE, warning = FALSE , message = FALSE}
+knitr::kable( sapply (rio_orig, class), "simple" , caption = "Column Data Types" , col.names = c("Type"))
+```
+
+<font size="3"> **3.6 We have no duplication of data** </font>
+```{r , warning = FALSE , echo = FALSE  }
+
+print(paste("The number of duplicated rows is:  " , sum(duplicated(rio_orig))  )  )
+
+```
+
+
+### 4. Analysis & Recommendations
+
+<font size="3"> In 2016 for the Rio Olympics, a budget of USD 22,000,000 provided individual and personalized support to 1,557 athletes from 185 countries. Out of these 1557, 815 athletes qualified for the games, and 101 medals were won.  Below, we offer ideas for how this money could be allocated in the future. </font>  \
+
+
+
+<font size="3"> **Recommendation #1:  Increase funding for athletes participating in a sport where there is currently low country participation**  </font>  \
+
+<font size="3"> **Rationale:**   Certain sports like Track & Field have ~ 200 countries participating, while at the other end of the spectrum, rugby has less than 15.  This recommendation will put the spotlight on these niche sports.  Plus, athletes participating in these sports will have a higher chance of success, and, more participation will bring more visibility to the sports.
+
+```{r  , warning = FALSE , echo = FALSE  }
+country_sport <- rio_orig %>% 
+                 select (sport, country) %>% 
+                 group_by( sport, country) 
+
+
+
+country_sport <- unique(country_sport)
+
+#View(country_sport)
+
+country_sport %>% 
+  group_by( sport )  %>% 
+  summarise ( num_countries = n() , 
+            )  -> country_sport
+
+
+
+ggplot(country_sport, aes(x="", y = num_countries)) + 
+geom_boxplot(outlier.colour="red", outlier.shape=8,
+                outlier.size=4)  +
+               # coord_flip() +
+                 theme_light() + 
+                 labs(title = 'Number of Countries Participating in Each Sport', subtitle = " *Highlighting Track&Field, Aquatics, Judo which are outliers on the high side" ,
+                  x = '',
+                  y = 'Count')  +
+                 theme(plot.subtitle=element_text(face="italic", color="red"))
+
+
+```
+
+
+<font size="3">Below, we see 4 sports -  **(Handball, Basketball, Hockey, Rugby)** -  at or below the 10th percentile which could be used as a starting point.    Interestingly, these are all team sports. </font> 
+
+
+```{r  , warning = FALSE , echo = FALSE  }
+
+
+country_sport_2 <- rio_orig %>% 
+                 select (sport, country) %>% 
+                 group_by( sport, country) 
+
+
+
+country_sport_2 <- unique(country_sport_2)
+
+#View(country_sport)
+
+country_sport_2 %>% 
+  group_by( sport )  %>% 
+  summarise ( num_countries = n() , 
+            )  -> country_sport_quant
+
+country_sport_quant <- quantile ( country_sport_quant$num_countries , 0.1 )
+
+
+country_sport_2 %>% 
+  group_by( sport )  %>% 
+  summarise ( num_countries = n() , 
+              quantile ( num_countries, 0.10  ))  %>% 
+  ggplot(aes(x = reorder(sport, num_countries)  , y = num_countries ) ) + 
+  geom_bar( stat = 'identity' , aes(fill = desc(num_countries) ) , show.legend = FALSE) +
+  coord_flip() + 
+  theme_light() + 
+  labs(title = 'Number of Countries Participating', subtitle = "The line shows 10th percentile" ,
+       x = '',
+       y = 'Count') +
+  geom_hline(yintercept = country_sport_quant,
+             size = 1,color = 'red')
+```
+
+
+
+##### \
+##### \ 
+<font size="3"> **Recommendation #2 -- Increase support to countries that are already winning medals and have a financial need (per GDP ).** </font>  \
+<font size="3"> **Rationale:**  Countries that are already winning medals most likely have systems in place to build off of.  Therefore, focus on these emerging countries to build on their momentum.   </font>  \
+
+<font size="3"> **First, we'll check our assumption that lower GDP countries win less medals **  </font>  \
+**<font size="3"> Lowest GDP </font> ** 
+
+
+
+```{r  , warning = FALSE , echo = FALSE }
+rio_orig %>%  
+    group_by( country ) %>% 
+       summarise(
+         lowest_gdp=max(gdp) ,
+         n=n(), 
+          sum_medals = sum(tot_medals), 
+            .groups = 'drop'   ) %>% 
+            arrange((lowest_gdp)) %>% 
+                head(n=5) %>% 
+                     kbl(caption = "") %>%
+                     kable_classic(full_width = F, html_font = "Cambria")
+
+
+```
+
+
+**<font size="3"> Highest GDP </font> ** 
+
+
+```{r  , echo = FALSE , warning = FALSE }
+rio_orig %>%  
+    group_by( country ) %>% 
+       summarise(
+        highest_gdp=max(gdp) ,
+         n=n(), 
+          sum_medals = sum(tot_medals) , 
+            .groups = 'drop'   ) %>% 
+            arrange(desc(highest_gdp)) %>% 
+                head(n=5) %>% 
+                     kbl(caption = "") %>%
+                     kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+
+<font size="3"> Comparing the *lowest* and *highest*  GDP,  it's interesting that Burundi (lowest GDP) got one medal while Luxembourg (highest) got none.  </font> \
+
+
+```{r , echo = FALSE , warning = FALSE}
+
+highlight_lux <- rio_orig %>% 
+            filter(gdp > 70000)  %>% 
+            group_by( country, gdp ) %>% 
+             summarise(tot_med_country = sum(tot_medals)  , .groups = 'drop'  )  
+
+rio_orig %>% 
+  filter(gdp > 0 & gdp <= 70000)  %>% 
+  group_by( country, gdp ) %>% 
+  summarise(tot_med_country = sum(tot_medals)  , .groups = 'drop'  )   %>% 
+  ggplot( aes(x=gdp, y=tot_med_country)) + 
+  geom_point(alpha = 0.25) + 
+  geom_point(data =highlight_lux, aes(x=gdp, y=tot_med_country), color = "red", size = 3 )  +
+  labs( x = "GDP", y =  "Total Medals" ) + 
+  ggtitle("GDP vs Total Medals", subtitle = "Interesing: 4 Highest GDP countries have low medal count" ) +
+  theme(plot.subtitle=element_text(face="italic", color="red"))
+
+
+
+
+
+
+```
+```{r}
+
+```
+
+
+<font size="3">  Going forward, we will remove gdp > $70,000 USD from our analysis as it pertains to medal count.  </font> \
+
+<font size="3">  **To what extent does GDP correlate to medal count?**  Here we see a correlation of 0.50. Let's visualize this in a few different ways.   </font> \
+
+
+
+```{r  , echo = FALSE ,  warning = FALSE  }
+
+
+
+corrplot_country <-   rio_orig %>% 
+             filter( population >0 & gdp > 0 & gdp <70000 )  %>% 
+             group_by (country, population, gdp) %>% 
+             summarise( num_athletes = n() , 
+             tot_med_country = sum(tot_medals) , 
+              .groups = 'drop' )
+
+corrplot_country <- corrplot_country[c(-1)]
+cor_country <- cor(corrplot_country)
+corrplot(cor_country, method = "number", col = "black", cl.pos = "n")
+
+
+```
+
+<font size="3">  **Clustering gdp & total medal count can give us some further insight into how well the data fits resulting groups. **    </font> \
+<font size="3">  * The cluster in the lower left fits the data belonging to that group the best -- within group variation is small compared to the others.  This cluster represents countries with the lowest mean gdp, the fewest medals, and is the focus of our recommendation.  </font> \
+<font size="3">  * The other 2 clusters do not fit the data as well, showing a much larger within - group variability.  </font> \
+
+```{r  , echo = FALSE ,  warning = FALSE  }
+clust_all <- rio_orig  %>% 
+  filter( country != "Luxembourg")     %>%    #outlier
+  group_by(country,  gdp) %>% 
+  summarise ( 
+              gdp = max(gdp), 
+              tot_medals = sum(tot_medals) , 
+               .groups = 'drop' 
+              )
+
+# remove nulls
+clust_compl <- clust_all[complete.cases(clust_all), ]  
+
+# remove non numberic
+clust <- clust_compl[-1] 
+
+# scale 
+clust.scaled <- scale(clust)
+
+# optimal number clusters
+ # fviz_nbclust(clust.scaled, kmeans, nstart=25, method = "wss") + 
+ #   geom_vline(xintercept = 3, linetype = 1)
+ 
+ 
+# cluster -- already determined that 3 is best
+KMCluster <- kmeans(clust.scaled , centers= 3 , nstart = 20)
+
+# bind the cluster results back to orig dataset so we can see the non scaled values
+clust_kmclust<-cbind(KMCluster=KMCluster$cluster,clust_compl)
+
+# look at the cluster stats
+clust_kmclust   %>%
+  group_by(  KMCluster )  %>% 
+  summarize(
+    n = n(),
+    mean(gdp), 
+    mean(tot_medals)      
+  
+    )  %>% 
+   kbl(caption = "Clusters") %>%
+   kable_classic(full_width = F, html_font = "Cambria")
+
+```
+
+
+```{r  , echo = FALSE ,  warning = FALSE  }
+
+fviz_cluster(KMCluster, data =clust, geom = c("point"),ellipse.type = "euclid")
+
+```
+
+<font size="3">   From the clustering we see that low GDP and low medal count countries are more similar than not.  Although it's not perfect, GDP is still the best standard to compare country to country prosperity.  Thus, in the chart below, we identity 8 countries whose GDP is in the 10th percentile and who are winning medals for consideration for targeted scholarships to help build on their momentum.  </font> \
+
+
+```{r  , echo = FALSE ,  warning = FALSE  , message = FALSE}
+gdp<- rio_orig %>% 
+  filter(gdp > 0 & gdp < 70000)  %>% 
+  group_by( country, gdp ) %>% 
+  summarise(tot_med_country = sum(tot_medals)  , .groups = 'drop'  ) 
+
+gdp_medal <- gdp %>% 
+            filter(tot_med_country > 0) 
+ 
+           
+gdp_medal_quant <- quantile ( gdp_medal$gdp , 0.1 )
+
+rio_orig %>% 
+  filter(gdp > 0 & gdp < 70000 & tot_medals > 0)  %>% 
+  group_by( country, gdp ) %>% 
+  summarise(tot_med_country = sum(tot_medals  )  , .groups = 'drop' )  %>% 
+  ggplot(aes(x = gdp, y = tot_med_country ))  +
+  geom_point(alpha = 0.25) + 
+  geom_smooth() +
+  labs( x = "GDP", y =  "Total Medals" ) + 
+  ggtitle("GDP vs Total Medals", subtitle = "Line shows 10th percentile" ) +
+  geom_vline(xintercept = gdp_medal_quant,
+             size = 1,color = 'red')
+
+
+```
+
+
+<font size="3">   **Countries with GDP in 10th percentile, who are winning medals**  </font> \
+
+
+
+```{r  , echo = FALSE ,  warning = FALSE  }
+gdp_medal  %>% 
+             filter( gdp <= gdp_medal_quant )  %>% 
+             kbl(caption = "Emerging Countries: GDP and Medal Count") %>%
+             kable_classic(full_width = F, html_font = "Cambria")
+```
+
+<font size="3">    **Recommendation #3: Reward low GDP countries that are most "productive",  by giving them more scholarships **   </font> \
+<font size="3">   From the correlation matrix we saw that the *number of athletes sent* has a strong correlation ( 0.87 )to medal count  </font> \
+
+
+```{r  , echo = FALSE ,  warning = FALSE, message = FALSE  }
+rio_orig %>% 
+  group_by( country ) %>% 
+  summarise(tot_med_country = sum(tot_medals)  , 
+            n = n())  %>% 
+  ggplot(aes(x = n, y = tot_med_country ))  +
+  geom_point(alpha = 0.25) + 
+  geom_smooth() +
+  labs( x = "Number Athletes Sent", y =  "Total Medals" ) + 
+  ggtitle("#Athletes Sent per Country vs Total Medals", subtitle = ""  )
+```
+
+<font size="3">    **But, sending more athletes costs more money.  We propose a new measure: ** </font> \
+
+$$Productivity = NumberMedals /  NumberAthletes$$
+
+<font size="3">   This new measure shows who is being the most selective in their athletes to maximize their achievement on the podium. 
+<font size="3">   Here we see the lowest GDP countries and their productivity.  The line separates the top 5 most productive countries (>20%) winning medals: Jamaica, Azerbaijan, Fiji, Nigeria, Ethiopia.  </font> \
+
+```{r  , echo = FALSE ,  warning = FALSE  }
+rio_orig %>% 
+         group_by(country ) %>% 
+            summarise(
+            sum_medals = sum(tot_medals),
+            n = n(), 
+            productivity = ( sum_medals / n) *100,
+            gdp = max(gdp)) %>% 
+            filter( productivity >0)%>% 
+              arrange( gdp, desc(productivity))  %>% 
+                  head(n=25)  %>% 
+          ggplot(aes(x = reorder(country, productivity)  , y = productivity ) ) + 
+          geom_bar( stat = 'identity' , aes(fill = desc(productivity) ), show.legend = FALSE) +
+          coord_flip() + 
+          theme_light() + 
+          labs(title = 'Productivity: emerging countries', subtitle = "" ,
+          x = '',
+          y = '% productivity')  +
+         geom_hline(yintercept = 20,
+          size = 1,color = 'red')
+
+
+```
+
+
+<font size="3">  **Recommendation #4: Use "productivity as a new measure of success in addition to pure medal count**   </font> \
+
+
+<font size="3">   We have all seen the standard way to measure success, via the pure medal count. For countries at the top, (USA, Germany, Great Britain, Russia, China), this is a source of great pride.  But, we also think productivity would put the spotlight on another group of countries that are deserving and should be celebrated.    </font> \
+```{r  , echo = FALSE ,  warning = FALSE , out.width = '100%', out.height = '100%' , message = FALSE  }
+
+#Ranking of the countries by Medals  
+
+  ggplot(data = tempdf2,aes(x = reorder(nationality,tot_medals),y = tot_medals)) +
+  geom_bar(stat = 'identity',aes(fill = tot_medals)) +
+  coord_flip() +
+  theme_dark() +
+  labs(title = 'Rankings of Countries by total medals', subtitle = 'Limited to countries that medaled; line shows average number of medals', 
+       x = 'Countries',y = 'Medals') +
+  geom_hline(yintercept = mean(tempdf2$tot_medals),
+             size = 1,color = 'black')
+
+
+
+
+```
+
+<font size="3">  **Using this new measure, which country came out on top?**   </font> \
+<font size="3">  **Jamaica!**   - Per the bar chart above, their productivity was 0.52 -- a tiny nation that had over half of it's athletes earning a medal.  </font> \
+```{r  , echo = FALSE ,  warning = FALSE, message = FALSE  }
+
+
+rio_orig %>% 
+  filter( country == "Jamaica" &  (gold + silver + bronze) > 0 ) %>% 
+  group_by(sport)  %>% 
+  summarise ( sum_gold = sum(gold) , 
+              sum_silver = sum(silver), 
+              sum_bronze = sum(bronze)
+              
+              )   %>% 
+       
+  kbl(caption = "Jamaica won all of it's medals in track & field") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
+
+<center> ![](map-of-jamaica.gif) </center>
+
+
+
+
+<font size="3">  We like this measure because it is not influenced by GDP.  Below, we plot productivity and GDP -- there is no observable pattern, which is what we want.   Productivity "normalizes" medal count and gives equal footing to countries that don't send a lot of athletes.   </font> \
+
+```{r  , echo = FALSE ,  warning = FALSE, message = FALSE  }
+
+rio_orig %>% 
+  filter(gdp > 0 & gdp < 70000)  %>% 
+  group_by( country, gdp ) %>% 
+   summarise(
+            tot_med_country = sum(tot_medals),
+            n = n(), 
+            productivity = tot_med_country / n
+               )   %>% 
+  ggplot(aes(x = gdp, y = productivity ))  +
+  geom_point(alpha = 0.25) + 
+  labs( x = "gdp", y =  "Productivity" ) + 
+  ggtitle("GDP vs Productivity", subtitle = "Productivity = #medals/#athletes"  )
+
+
+
+
+```
+
+
+<font size="3">  **Recommendation #5:  Sponsor more men & women in certain sports where there is an imbalance of participation by gender.**  </font> \
+
+<font size="3">  The mosaic plot shows uneven length of pink and blue bars indicating there is not a 50:50 split in participation in certain sports.  </font> \
+```{r  , echo = FALSE ,  warning = FALSE  }
+
+mosaicplot(sport~sex,data=rio_orig, main = "Males and Females by Sport", color = c(  "hotpink3", "dodgerblue4"  )  )
+
+```
+
+
+<font size="3">  Specifically, we could use more men in gymnastics, and more women in the 8 sports below the 40% line: Rowing, Judo, Shooting, Equestrian, Cycling, Canoe, Wrestling, Boxing.  </font> \
+
+
+```{r  , echo = FALSE ,  warning = FALSE  }
+rio_orig %>% 
+  select(sport, sex)  %>% 
+  group_by( sport )  %>% 
+  mutate (  female = ifelse(sex == 'female', 1, 0 ), 
+             male =  ifelse(sex == 'male', 1, 0 ) ) %>% 
+  summarise(  perc_female = sum(female) / ( sum( female ) + sum( male ) ) )  %>% 
+  ggplot(aes(x = reorder(sport, perc_female)  , y = perc_female ) ) + 
+          geom_bar( stat = 'identity' , aes(fill = desc(perc_female)) , show.legend = FALSE) +
+          coord_flip() + 
+          theme_light() + 
+          labs(title = 'Percent Women by Sport', subtitle = "Eight sports with < 40% Women Participation\n Red line is 40%, black line is 50%" ,
+          x = '',
+          y = '%') + 
+          geom_hline(yintercept = 0.4, size = 1,color = 'red') +
+          geom_hline(yintercept = 0.5, size = 1,color = 'black') 
+
+```
+
+```{r}
+```
+
+<font size="3"> **Recommendation #6:  *Continue* to sponsor independent athletes, who for no fault of their own, are not able to compete for their country**  </font> \
+<font size="3"> At Rio, Kuwaiti athletes  competed under the International Olympic Committee (IOC) flag, as  Kuwait had been suspended by the IOC for the second time in five years due to governmental interference. </font>
+<font size="3">One of these athletes, Fehai Al-Deehani,  became the **first** IOC athlete to win a gold medal.  His event was Mens Double - trap shooting, which has the athlete shoot two clay objects flung at high speed with a shotgun.   </font> \
+
+<center>  ![](shooter_gold.jpg) </center>
+<center><font size="3"> Fehaid Al-Deehani </font></center>
+
+
+```{r  , echo = FALSE ,  warning = FALSE  }
+
+rio_orig %>% 
+  filter( str_detect( name, "Fehaid"))  %>% 
+  select( name, nationality, sex,   sport, gold, silver, bronze ) %>% 
+  kbl( caption = "Athlete Without Country -- Gold Medal Winner" ) %>%
+  kable_classic( full_width = F, html_font = "Cambria" )
+
+
+```
+
+
+
+<font size="3">  **Recommendation #7: *Continue* to sponsor Refugees.**  - The International Olympic Committee established the Refugee Olympic team to show solidarity to refugees.   Ten athletes competed under the "Refugee Olympic Team", below. </font> \
+```{r, warning = FALSE , echo = FALSE }
+rio_orig %>% 
+  filter( nationality == "ROT")  %>% 
+  select( name, nationality, sex,   sport, gold, silver, bronze ) %>% 
+  kbl( caption = "Athletes Without Country -- Refugees" ) %>%
+  kable_classic( full_width = F, html_font = "Cambria" )
+```
+
+One of these refugees, Yusra Mardini, is a Syrian swimmer who crossed from Turkey to Greece in an inflatable boat.  When the motor on the boat stopped, she swam.  She navigated  by train through Greece, the Balkans, Hungary, and Austria and finally reached Germany where she now lives and trains.  She is the youngest ambassador ever appointed for the UN Refugee Agency.  Her amazing story is told in a new book called *"Butterfly"*.  
+
+
+
+<center>  ![](YusraMardini.jpg){width=30%} </center>
+<center><font size="3"> Yusra Mardini </font> </center>
+
+
+
+```{r,  warning = FALSE , echo = FALSE  }
+
+
+
+```
+
+
+### 5. Summary
+
+<font size="3">  **Using analytics, we have identified strategic areas where the IOC could award more scholarships to athletes for a win-win:**  </font>  \ 
+
+
+
+```{r}
+
+
+
+```
+ <font size="3"> 
+ a. Increase country participation in sports like handball, basketball, hockey and rugby where not many countries participate compared to other sports.\
+ b. Reward countries with a low GDP that have already had athletes on the podium, to build on their momentum, like:  
+      Burundi  | Ivory Coast | Ethiopia  | India | Kenya | Moldova | Niger  |  Tajikistan  \
+ c. Reward productive countries with low GDP, that have a high number of medals per athlete,  like: \
+     Jamaica | Azerbaijan | Fiji |  Nigeria |  Ethiopia \
+ d. Seek out more men gymnasts, and more women to participate in Rowing, Judo, Shooting, Equestrian, Cycling, Canoe, Wrestling, Boxing so there is better balance in these sports by gender.  
+ e. Continue to sponsor independent athletes and refugees -- these athletes inspire us and shows the spirit of the IOC to make a difference in the world. 
+
+ </font>  
+
+
+
+
+
+```{r}
+
+```
+
+<font size="3">   **Limitations**  (1) We used data to uncover opportunities for strategic focus; ideally, we'd work with the IOC to fine tune this.  (2) We were limited to GDP to assess country prosperity, but, we would be interested in other things that could help compare the *athletic* capability between countries, like, number of professional coaches and access to facilities.  (3) We limited our analysis to one Olympic game, Rio.  We could use Tokyo Olympic data to see if the same recommendations stay consistent over time.   </font>  \  
+
+<font size="3">   **Conclusion**   This proof-of-concept shows how much can be done with data to provide rigor into how scholarships could be awarded to help achieve a win - win:   athletes get a chance to compete and strategic goals by the governing body are met.  This would allow the IOC to play a more active role in the recruitment of athletes, and increase their overall engagement in the process.  </font>
+
